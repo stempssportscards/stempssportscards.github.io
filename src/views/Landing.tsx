@@ -7,7 +7,9 @@ export function Landing() {
   const library = useLibrary();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [clientId, setClientId] = useState(library.clientId);
+  const [typedClientId, setClientId] = useState("");
+  const clientId = typedClientId || library.clientId;
+  const preset = Boolean(library.clientId.trim()) && !typedClientId;
 
   async function signIn() {
     setBusy(true);
@@ -38,6 +40,7 @@ export function Landing() {
         </button>
       </div>
       {message ? <p className="warn" role="alert">{message}</p> : null}
+      {preset ? null : (<>
       <label htmlFor="client-id">Google OAuth client ID</label>
       <input
         id="client-id"
@@ -54,6 +57,7 @@ export function Landing() {
         Paste the web client ID once on this phone. Friends each sign in with their own Google account, and each shelf is stored in that person's Drive.
         The exact Cloud Console steps are in the README.
       </p>
+      </>)}
       <button className="statsLink" type="button" onClick={() => go("/settings")}>Settings</button>
     </main>
   );

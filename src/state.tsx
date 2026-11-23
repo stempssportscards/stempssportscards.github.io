@@ -151,7 +151,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       const localApi = storageGet(API_KEY);
       const envClient = (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "").trim();
       const envApi = (import.meta.env.VITE_GOOGLE_API_KEY ?? "").trim();
-      setClientIdState(localClient || file.googleClientId || envClient);
+      setClientIdState(file.googleClientId || localClient || envClient);
       setApiKeyLocal(localApi || envApi);
       const storedGemini = storageGet(GEMINI_KEY);
       setGeminiKey(storedGemini);
@@ -249,7 +249,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       setGeminiModel,
       setSaveGeminiToDrive,
       signIn: async () => {
-        const id = (localStorage.getItem(CLIENT_ID) || clientId || fileConfig.googleClientId).trim();
+        const id = (fileConfig.googleClientId || localStorage.getItem(CLIENT_ID) || clientId).trim();
         if (!id) throw new Error("Add the Google OAuth client ID first. The steps are in Settings.");
         setError(null);
         const granted = await requestGoogleToken(id);
