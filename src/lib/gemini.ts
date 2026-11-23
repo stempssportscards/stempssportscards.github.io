@@ -1,5 +1,8 @@
 export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 
+export const RELAY_QUOTA_MESSAGE =
+  "The shared card scanner hit today's free limit. Add your own free Gemini key in Settings to keep scanning";
+
 export interface Identification {
   player: string;
   year: string;
@@ -88,6 +91,10 @@ function textFromResponse(json: { candidates?: { content?: { parts?: { text?: st
   return parts.map((part) => part.text ?? "").join("\n");
 }
 
+function isQuota(status: number, error: string): boolean {
+  return status === 429 || /quota|RESOURCE_EXHAUSTED|rate.?limit/i.test(error);
+}
+
 export async function identifyWithGemini(blob: Blob, apiKey: string, model = DEFAULT_GEMINI_MODEL): Promise<Identification> {
   const data = await blobToBase64(blob);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -129,4 +136,48 @@ export async function identifyWithGemini(blob: Blob, apiKey: string, model = DEF
   const text = textFromResponse(json);
   if (!text.trim()) throw new Error("Gemini returned no card details.");
   return { ...parseIdentification(text), source: "gemini" };
+}
+
+export async function identifyWithRelay(blob: Blob, relayUrl: string, model = DEFAULT_GEMINI_MODEL): Promise<Identification> {
+  const data = await blobToBase64(blob);
+  const response = await fetch(relayUrl, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    redirect: "follow",
+    body: JSON.stringify({
+      image: data,
+      mimeType: blob.type || "image/jpeg",
+      prompt: PROMPT,
+      model,
+    }),
+  });
+  const raw = await response.text();
+  let envelope: { ok?: boolean; status?: number; data?: { candidates?: { content?: { parts?: { text?: string }[] } }[] }; error?: unknown };
+  try {
+    envelope = JSON.parse(raw) as typeof envelope;
+  } catch {
+    if (response.status === 429 || isQuota(response.status, raw)) throw new Error(RELAY_QUOTA_MESSAGE);
+    throw new Error(geminiMessage(response.status, raw, model));
+  }
+  const status = typeof envelope.status === "number" ? envelope.status : response.status;
+  const error = typeof envelope.error === "string" ? envelope.error : raw;
+  if (!envelope.ok || isQuota(status, error)) {
+    if (isQuota(status, error)) throw new Error(RELAY_QUOTA_MESSAGE);
+    throw new Error(geminiMessage(status, error, model));
+  }
+  const text = textFromResponse(envelope.data ?? {});
+  if (!text.trim()) throw new Error("Gemini returned no card details.");
+  return { ...parseIdentification(text), source: "gemini" };
+}
+
+export async function identifyCard(
+  blob: Blob,
+  options: { apiKey?: string; relayUrl?: string; model?: string } = {},
+): Promise<Identification> {
+  const model = options.model?.trim() || DEFAULT_GEMINI_MODEL;
+  const apiKey = options.apiKey?.trim() ?? "";
+  if (apiKey) return identifyWithGemini(blob, apiKey, model);
+  const relayUrl = options.relayUrl?.trim() ?? "";
+  if (relayUrl) return identifyWithRelay(blob, relayUrl, model);
+  return mockIdentification();
 }

@@ -72,4 +72,32 @@ describe("CardForm", () => {
     fireEvent.change(screen.getByLabelText("Sold price"), { target: { value: "4" } });
     expect(screen.getByTestId("profit-line").textContent).toBe("Loss $6.00");
   });
+
+  it("points the user to Settings when the shared scanner is out of quota", async () => {
+    const { RELAY_QUOTA_MESSAGE } = await import("../lib/gemini.ts");
+    render(
+      <CardForm
+        initial={null}
+        initialPhotoUrl={null}
+        identify={async () => {
+          throw new Error(RELAY_QUOTA_MESSAGE);
+        }}
+        loadPhoto={async () => new Blob(["photo"], { type: "image/jpeg" })}
+        onSave={async () => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+    // Existing card photo path: initial photo id is missing, so give a library photo.
+    const file = new File(["photo"], "card.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Photo library"), { target: { files: [file] } });
+    await waitFor(() => {
+      const button = screen.getByRole("button", { name: "Read the card" }) as HTMLButtonElement;
+      if (button.disabled) throw new Error("photo not ready");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Read the card" }));
+    expect(await screen.findByText(RELAY_QUOTA_MESSAGE)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(window.location.hash).toBe("#/settings");
+  });
 });

@@ -54,7 +54,7 @@ export function Landing() {
         Paste the web client ID once on this phone. Friends each sign in with their own Google account, and each shelf is stored in that person's Drive.
         The exact Cloud Console steps are in the README.
       </p>
-      <button className="statsLink" type="button" onClick={() => go("/settings")}>Settings and Gemini key</button>
+      <button className="statsLink" type="button" onClick={() => go("/settings")}>Settings</button>
     </main>
   );
 }

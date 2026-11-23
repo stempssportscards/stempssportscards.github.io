@@ -96,14 +96,18 @@ Publishing a buyer link sets `for-sale.json`, and the photos of cards marked **F
 
 The link looks like `https://YOURNAME.github.io/stemps-sports-cards/#/s/FILE_ID`. The hash works on GitHub Pages without extra server rules.
 
-## 3. Gemini key
+## 3. Gemini (optional personal key)
+
+The live site can read cards through a hidden free-tier relay. After that Apps Script web app is deployed, put its URL in `public/config.json` as `geminiRelayUrl` and rebuild. Never put the Gemini key in that file.
+
+A personal key is optional. Add one in Settings if the shared scanner hits today's free limit, or if you want to use your own:
 
 1. Open [Google AI Studio](https://aistudio.google.com/apikey) while signed into the Google account that should pay nothing.
 2. Create an API key in a project with **no billing account**.
-3. In the app: **Settings → Gemini API key → Save Gemini key**.
+3. In the app: **Settings → Gemini API key (optional) → Save Gemini key**.
 4. Optional, after Google sign-in: check **Also keep a copy in my Drive** so a second phone can load it. That file is private. It is not the buyer file.
 
-The default model is `gemini-3.5-flash-lite`. If Google rejects the name, set the model to `gemini-3.8-flash` and save again. With no key, **Read the card** fills a labeled sample so the rest of the form can be tried. Edit the sample before saving.
+The default model is `gemini-3.5-flash-lite`. If Google rejects the name, set the model to `gemini-3.8-flash` and save again. If there is no personal key and no relay URL, **Read the card** fills a labeled sample so the rest of the form can be tried. Edit the sample before saving.
 
 ## 4. Free hosting
 
@@ -145,7 +149,7 @@ The app cannot create these for you, and nothing here was purchased:
 
 1. Create the Google Cloud OAuth client and paste the client ID.
 2. Create the referrer-restricted Drive API key and put it in `public/config.json` if buyers on other phones should open the link.
-3. Create a Gemini key in AI Studio and save it in Settings.
+3. Deploy the Apps Script Gemini relay and put its web app URL in `public/config.json` as `geminiRelayUrl`. A personal Gemini key in Settings is optional.
 4. Create the public GitHub (or Cloudflare / Netlify) project and add its origin to the OAuth client.
 5. Optional: buy a domain yourself, about $7/year.
 

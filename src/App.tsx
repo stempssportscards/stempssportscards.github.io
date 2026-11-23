@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { identifyWithGemini, mockIdentification } from "./lib/gemini.ts";
+import { identifyCard } from "./lib/gemini.ts";
 import { go, parseRoute, type Route } from "./lib/route.ts";
 import { useLibrary } from "./state.tsx";
 import { Brand } from "./views/Brand.tsx";
@@ -96,7 +96,13 @@ function Editor({ id }: { id: string | null }) {
         initial={card}
         initialPhotoUrl={photoUrl}
         loadPhoto={card ? () => library.getPhotoBlob(card.photoId) : undefined}
-        identify={(photo) => (library.geminiKey.trim() ? identifyWithGemini(photo, library.geminiKey.trim(), library.geminiModel) : Promise.resolve(mockIdentification()))}
+        identify={(photo) =>
+          identifyCard(photo, {
+            apiKey: library.geminiKey,
+            relayUrl: library.geminiRelayUrl,
+            model: library.geminiModel,
+          })
+        }
         onCancel={() => go(card ? `/card/${card.id}` : "/")}
         onSave={async (input) => {
           const saved = await library.saveCard(input);

@@ -26,7 +26,7 @@ export function Settings() {
       {library.mode === "drive" ? <p className="muted">Signed in as {library.name}{library.email ? ` · ${library.email}` : ""}</p> : null}
       {library.mode === "demo" ? <p className="warn">Demo data stays in this browser. It is not in Google Drive.</p> : null}
 
-      <label htmlFor="gemini-key">Gemini API key</label>
+      <label htmlFor="gemini-key">Gemini API key (optional)</label>
       <input
         id="gemini-key"
         type="password"
@@ -36,7 +36,7 @@ export function Settings() {
         placeholder="From aistudio.google.com/apikey"
         onChange={(event) => library.setGeminiKey(event.target.value)}
       />
-      <p className="muted small">Free-tier key from Google AI Studio. It stays on this phone{library.mode === "drive" ? ", or in a private Drive file if you check the box" : ""}. It is never put in the buyer link or config.json.</p>
+      <p className="muted small">Optional. Photos are read with a shared free scanner, so you can leave this blank. Add your own free-tier key from Google AI Studio if that scanner hits its daily limit, or if you want to use your own. It stays on this phone{library.mode === "drive" ? ", or in a private Drive file if you check the box" : ""}. It is never put in the buyer link or config.json.</p>
       {library.geminiFromDrive ? <p className="muted small">Loaded the key saved in your Drive.</p> : null}
 
       <label htmlFor="gemini-model">Gemini model</label>

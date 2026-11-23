@@ -46,6 +46,7 @@ interface LibraryValue {
   geminiModel: string;
   saveGeminiToDrive: boolean;
   geminiFromDrive: boolean;
+  geminiRelayUrl: string;
   setClientId: (value: string) => void;
   setApiKey: (value: string) => void;
   setGeminiKey: (value: string) => void;
@@ -92,7 +93,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [cards, setCards] = useState<Card[]>([]);
   const [shareFileId, setShareFileId] = useState<string | null>(null);
   const [token, setToken] = useState<StoredToken | null>(null);
-  const [fileConfig, setFileConfig] = useState<FileConfig>({ googleClientId: "", googleApiKey: "" });
+  const [fileConfig, setFileConfig] = useState<FileConfig>({ googleClientId: "", googleApiKey: "", geminiRelayUrl: "" });
   const [clientId, setClientIdState] = useState("");
   const [apiKeyLocal, setApiKeyLocal] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
@@ -233,6 +234,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       geminiModel,
       saveGeminiToDrive,
       geminiFromDrive,
+      geminiRelayUrl: fileConfig.geminiRelayUrl,
       setClientId: (next) => {
         const trimmed = next.trim();
         setClientIdState(trimmed);
@@ -459,6 +461,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     error,
     fileConfig.googleApiKey,
     fileConfig.googleClientId,
+    fileConfig.geminiRelayUrl,
     geminiFromDrive,
     geminiKey,
     geminiModel,

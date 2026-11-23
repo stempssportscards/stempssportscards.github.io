@@ -3,6 +3,7 @@ import { compQuery, ebaySoldUrl, point130Url } from "../lib/comps.ts";
 import { mockIdentification, type Identification } from "../lib/gemini.ts";
 import { fileToJpeg } from "../lib/images.ts";
 import { cardProfit, centsToInput, dollarsToCents, formatProfit } from "../lib/money.ts";
+import { go } from "../lib/route.ts";
 import type { Card, CardInput, CardStatus } from "../types.ts";
 
 function today(): string {
@@ -183,6 +184,9 @@ export function CardForm({
       {banner ? (
         <div className="warn" role="alert">
           <p>{banner}</p>
+          {banner.includes("Settings to keep scanning") ? (
+            <button type="button" className="secondary" onClick={() => go("/settings")}>Open Settings</button>
+          ) : null}
           {banner.startsWith("Gemini") || banner.includes("key was rejected") || banner.includes("free limit") ? (
             <button type="button" className="secondary" onClick={() => apply(mockIdentification())}>Fill sample details instead</button>
           ) : null}
