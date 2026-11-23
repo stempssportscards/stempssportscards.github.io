@@ -25,79 +25,26 @@ WHITE = (246, 241, 228, 255)
 BLACK = (0, 0, 0, 255)
 
 
-def ink_rows(image: Image.Image) -> list[int]:
-    rgb = image.convert("RGB")
-    width, height = rgb.size
-    counts: list[int] = []
-    pixels = rgb.load()
-    for y in range(height):
-        count = 0
-        for x in range(0, width, 2):
-            red, green, blue = pixels[x, y]
-            if red + green + blue > 50:
-                count += 1
-        counts.append(count)
-    return counts
-
-
-def bands(counts: list[int], gap: int = 14) -> list[tuple[int, int]]:
-    found: list[tuple[int, int]] = []
-    start = None
-    quiet = 0
-    for y, count in enumerate(counts):
-        if count > 8:
-            if start is None:
-                start = y
-            quiet = 0
-        elif start is not None:
-            quiet += 1
-            if quiet >= gap:
-                found.append((start, y - quiet))
-                start = None
-                quiet = 0
-    if start is not None:
-        found.append((start, len(counts) - 1))
-    return found
-
-
 def crop_source(source: Image.Image) -> tuple[Image.Image, Image.Image]:
-    """Keep the top wordmark and a square of the crown plus shield."""
-    counts = ink_rows(source)
-    groups = bands(counts)
-    height = source.height
-    print("content bands:", groups)
-    if not groups:
-        raise SystemExit("source logo has no visible artwork")
-    # The promo (Football Cards / $1 / cards) sits in the lower half.
-    wordmark_end = groups[0][1]
-    for top, bottom in groups:
-        if bottom > height * 0.46:
-            break
-        wordmark_end = bottom
-    pad = 12
-    top = max(0, groups[0][0] - pad)
-    bottom = min(height, wordmark_end + pad)
-    wordmark = source.crop((0, top, source.width, bottom))
-    # Shield and crown are the narrow top band, centered.
-    shield_bottom = min(bottom, groups[0][1] + pad)
-    shield = source.crop((0, top, source.width, shield_bottom))
-    box = shield.convert("RGB").getbbox()
-    if box:
-        left, upper, right, lower = box
-        side = max(right - left, lower - upper) + 48
-        center_x = (left + right) // 2
-        center_y = (upper + lower) // 2
-        icon = Image.new("RGB", (side, side), (0, 0, 0))
-        crop = shield.crop((
-            max(0, center_x - side // 2),
-            max(0, center_y - side // 2),
-            min(shield.width, center_x + side // 2),
-            min(shield.height, center_y + side // 2),
-        ))
-        icon.paste(crop, ((side - crop.width) // 2, (side - crop.height) // 2))
-    else:
-        icon = shield
-    return wordmark.convert("RGBA"), icon.convert("RGBA")
+    """Crop the supplied lockup.
+
+    Measured on the 1135×1236 artwork. The gold rule under "Sports Cards"
+    ends at y=618. "Football Cards" and the $1 promo start just below that.
+    The crown and SSC shield sit in the center, above the script.
+    """
+    width, height = source.size
+    wordmark = source.crop((0, 0, width, round(height * 618 / 1236)))
+    shield = source.crop((
+        round(width * 462 / 1135),
+        round(height * 2 / 1236),
+        round(width * 690 / 1135),
+        round(height * 232 / 1236),
+    ))
+    pad = 36
+    side = max(shield.size) + pad * 2
+    icon = Image.new("RGBA", (side, side), (0, 0, 0, 255))
+    icon.paste(shield.convert("RGBA"), ((side - shield.width) // 2, (side - shield.height) // 2))
+    return wordmark.convert("RGBA"), icon
 
 
 def font(url: str, name: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:

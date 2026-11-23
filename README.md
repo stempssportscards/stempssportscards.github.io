@@ -107,7 +107,17 @@ The default model is `gemini-3.5-flash-lite`. If Google rejects the name, set th
 
 ## 4. Free hosting
 
-The site is a static build (`npm run build` → `dist/`). Hash routes mean it does not need redirects.
+The site is a static build (`npm run build` → `dist/`). The same setup as Stone Creek Pickleball is a **free Render static site** built from GitHub. `render.yaml` is the Blueprint.
+
+In the Render dashboard, if you create it by hand:
+
+1. **New → Static Site**. Do not choose a Web Service. Static sites are $0.
+2. Connect `michaeldnbaker-ops/stemps-sports-cards`, branch `main`.
+3. Build command: `npm ci && npm run build`
+4. Publish directory: `dist`
+5. Add a rewrite: source `/*`, destination `/index.html`, action **Rewrite**. Render skips that rule when a real file exists, so JS, CSS, and images still load.
+
+After the first deploy, add the `https://….onrender.com` origin (no path) to the Google OAuth client and to the API key's HTTP referrers, then put both values in `public/config.json` and push again.
 
 ### GitHub Pages
 
@@ -139,4 +149,4 @@ The app cannot create these for you, and nothing here was purchased:
 4. Create the public GitHub (or Cloudflare / Netlify) project and add its origin to the OAuth client.
 5. Optional: buy a domain yourself, about $7/year.
 
-To use the original logo artwork, save it as `brand/source.png` and run `npm run brand`. That crops the crown, SSC shield, and "Stemp's Sports Cards" wordmark, and leaves off the "$1 Football Cards" promo.
+The original logo is `brand/source.png`. `npm run brand` writes the header and buyer-page wordmark (crown, SSC shield, and "Stemp's Sports Cards") and the app icons (crown and shield). The "$1 Football Cards" promo is not included.

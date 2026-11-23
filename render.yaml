@@ -1,0 +1,12 @@
+# Free Render static site. Same shape as a Blueprint for a Vite app.
+# Static sites have no instance type and no monthly charge.
+services:
+  - type: web
+    name: stemps-sports-cards
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
