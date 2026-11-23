@@ -51,7 +51,9 @@ export default function App() {
     <>
       <header>
         {route.name !== "shelf" ? (
-          <button className="ghost back" type="button" aria-label="Back" onClick={back}>←</button>
+          <div className="headNav">
+            <button className="ghost back" type="button" aria-label="Back" onClick={back}>←</button>
+          </div>
         ) : null}
         <Brand onClick={() => go("/")} />
       </header>

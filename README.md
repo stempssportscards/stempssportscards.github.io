@@ -112,7 +112,7 @@ The site is a static build (`npm run build` → `dist/`). The same setup as Ston
 In the Render dashboard, if you create it by hand:
 
 1. **New → Static Site**. Do not choose a Web Service. Static sites are $0.
-2. Connect `michaeldnbaker-ops/stemps-sports-cards`, branch `main`.
+2. Connect this repository, branch `main`.
 3. Build command: `npm ci && npm run build`
 4. Publish directory: `dist`
 5. Add a rewrite: source `/*`, destination `/index.html`, action **Rewrite**. Render skips that rule when a real file exists, so JS, CSS, and images still load.

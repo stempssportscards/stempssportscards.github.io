@@ -31,6 +31,9 @@ describe("PublicSale", () => {
       ],
     });
     render(<PublicSale catalog={catalog} />);
+    const logo = screen.getByRole("img", { name: "Stemp's Sports Cards" });
+    expect(logo.className).toContain("heroLogo");
+    expect(logo.getAttribute("src")).toContain("wordmark.png");
     expect(screen.getByRole("heading", { name: "Patrick Mahomes" })).toBeTruthy();
     expect(screen.getByTestId("asking").textContent).toBe("$25.00");
     expect(screen.getByText(/2020 · Panini Prizm · #15 · Silver · PSA 10/)).toBeTruthy();
@@ -42,5 +45,6 @@ describe("PublicSale", () => {
     expect(text).not.toMatch(/profit/i);
     expect(text).not.toMatch(/cost/i);
     expect(text).not.toMatch(/paid/i);
+    expect(document.body.innerHTML).not.toMatch(/github\.com|github\.io|michaeldnbaker/i);
   });
 });

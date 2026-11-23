@@ -21,7 +21,7 @@ export function Settings() {
   }
 
   return (
-    <main className={`page ${library.mode === "signed-out" ? "" : "withtabs"}`}>
+    <main className="page withtabs">
       <h2>Settings</h2>
       {library.mode === "drive" ? <p className="muted">Signed in as {library.name}{library.email ? ` · ${library.email}` : ""}</p> : null}
       {library.mode === "demo" ? <p className="warn">Demo data stays in this browser. It is not in Google Drive.</p> : null}
