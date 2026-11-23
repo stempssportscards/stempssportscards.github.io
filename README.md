@@ -1,3 +1,142 @@
-# New repo
+# Stemp's Sports Cards
 
-This repo was created by a Cursor cloud agent.
+A private shelf for a handful of people. Each person signs in with Google and the app stores **their** cards in **their** Google Drive. There is no server and no database. Hosting is a free static site.
+
+What you can do:
+
+- Add a card from the camera or the photo library.
+- Read the card with Gemini (player, year, set, number, parallel, grade) and edit the result.
+- Track buy price, asking price, sold price and date, and status (owned / for sale / sold).
+- See profit automatically: sold minus buy once it sells, or asking minus buy as potential before that.
+- Open eBay sold listings and a 130point search for that card. No eBay API.
+- See counts, cost, asking value, and realized profit, and filter the shelf.
+- Publish a buyer link. Buyers do not sign in. They see photo, details, and asking price only.
+
+## Cost
+
+| Item | Cost |
+| --- | --- |
+| This app, GitHub Pages, Google Drive, Google sign-in | $0 |
+| Gemini, if the AI Studio project has **no billing account** | $0 until the free quota runs out, then the request fails instead of charging |
+| eBay and 130point | $0. They are normal links, not APIs |
+| A custom domain | Optional, about $7/year at a registrar. Skip it and use the free `github.io` address |
+
+Do not attach a billing account to the Google Cloud project or the AI Studio project.
+
+## Run it on this phone or computer
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:4317`.
+
+**Try the demo on this phone** stores the shelf in this browser only. Use it to learn the app. A demo buyer link does not work on someone else's phone.
+
+`npm test` checks profit math, the buyer file, comp links, and the Gemini sample read. `npm run build` writes `dist/`.
+
+## 1. Google sign-in and Drive
+
+The app only asks for `drive.file` (files this app creates), plus email and profile so it can show who is signed in. It does not see the rest of the Drive.
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/) and create a project, for example `Stemp's Sports Cards`. Leave billing off.
+2. **APIs & Services → Library**. Enable **Google Drive API**.
+3. **Google Auth Platform → Branding** (this used to be called the OAuth consent screen):
+   - User type: **External**
+   - App name: `Stemp's Sports Cards`
+   - Support email: your Gmail
+4. **Google Auth Platform → Data access / Scopes**. Add:
+   - `https://www.googleapis.com/auth/drive.file`
+   - `https://www.googleapis.com/auth/userinfo.email`
+   - `https://www.googleapis.com/auth/userinfo.profile`
+   - `openid`
+5. **Audience**. While the app is in **Testing**, only listed test users can sign in (up to 100). Add every Gmail address that will use the shelf, including yours. `drive.file` is a non-sensitive scope, so you can later click **Publish app** and skip Google's restricted-scope review. Publishing lets any Google account sign in. Testing is enough for a few friends.
+6. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+   - Application type: **Web application**
+   - Name: `Stemp's Sports Cards web`
+   - **Authorized JavaScript origins** (no trailing slash, no path):
+     - `http://127.0.0.1:4317`
+     - `http://localhost:4317`
+     - `https://YOURNAME.github.io`
+     - `https://your-domain.com` if you add one
+   - **Authorized redirect URIs**: leave this empty. Sign-in uses a Google popup and checks the JavaScript origin, not a redirect URI.
+7. Copy the client ID. It ends in `.apps.googleusercontent.com`.
+8. On the phone, open the app, paste that ID into **Google OAuth client ID**, and tap **Sign in with Google**. Allow pop-ups if the phone blocks the Google window.
+
+The first sign-in creates a Drive folder named **Stemp's Sports Cards**. `collection.json` and the photos stay private to that Google account.
+
+You can also put the client ID in `public/config.json` so every visitor's phone already has it, then rebuild. The client ID is not a secret. The Gemini key is. Never put the Gemini key in that file.
+
+## 2. Buyer links (Google API key)
+
+Buyers do not sign in. The app reads the public `for-sale.json` with a browser API key.
+
+1. In the same Cloud project: **Credentials → Create credentials → API key**.
+2. Edit the key.
+   - Application restrictions: **HTTP referrers**.
+   - Add the same sites as the OAuth origins, with a path wildcard:
+     - `http://127.0.0.1:4317/*`
+     - `http://localhost:4317/*`
+     - `https://YOURNAME.github.io/*`
+     - `https://your-domain.com/*`
+   - API restrictions: **Restrict key** → **Google Drive API** only.
+3. Put the key in `public/config.json`:
+
+```json
+{
+  "googleClientId": "YOUR_ID.apps.googleusercontent.com",
+  "googleApiKey": "YOUR_BROWSER_KEY"
+}
+```
+
+4. Rebuild and redeploy. A key typed only into Settings works on that phone. Other people need the key in `config.json`.
+
+Publishing a buyer link sets `for-sale.json`, and the photos of cards marked **For sale**, to **anyone with the link**. Taking a card off sale removes that public permission from its photo. The public file is built from an allow-list: player, year, set, number, parallel, grade, asking price, photo. Cost, sold price, notes, and profit are not written.
+
+The link looks like `https://YOURNAME.github.io/stemps-sports-cards/#/s/FILE_ID`. The hash works on GitHub Pages without extra server rules.
+
+## 3. Gemini key
+
+1. Open [Google AI Studio](https://aistudio.google.com/apikey) while signed into the Google account that should pay nothing.
+2. Create an API key in a project with **no billing account**.
+3. In the app: **Settings → Gemini API key → Save Gemini key**.
+4. Optional, after Google sign-in: check **Also keep a copy in my Drive** so a second phone can load it. That file is private. It is not the buyer file.
+
+The default model is `gemini-3.5-flash-lite`. If Google rejects the name, set the model to `gemini-3.8-flash` and save again. With no key, **Read the card** fills a labeled sample so the rest of the form can be tried. Edit the sample before saving.
+
+## 4. Free hosting
+
+The site is a static build (`npm run build` → `dist/`). Hash routes mean it does not need redirects.
+
+### GitHub Pages
+
+1. Create a **public** GitHub repository and push this project to `main`. Private GitHub Pages is not free.
+2. In the repo: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. The workflow in `.github/workflows/pages.yml` runs the tests and publishes `dist/`.
+4. The address is `https://YOURNAME.github.io/REPO_NAME/`.
+5. Add that origin (`https://YOURNAME.github.io`, no path) to the OAuth client and the API key referrers, then put both values in `public/config.json` and push again.
+
+### Cloudflare Pages or Netlify
+
+Create a free project, framework preset **Vite**, build command `npm run build`, output directory `dist`. Add the deployed `https://…` origin the same way as GitHub Pages. Do not pick a paid plan.
+
+### Custom domain
+
+Point the domain at the host's free instructions (GitHub Pages or Cloudflare). Add `https://your-domain.com` as an Authorized JavaScript origin and an API-key referrer. The domain registration is the only optional cost.
+
+## iPhone
+
+The app is built for a phone, including iPhone Chrome. Add it to the Home Screen from the browser menu if you want the SSC icon. Use **Take photo** for the camera. If a HEIC photo will not open, set the iPhone camera to **Most Compatible**, or choose the photo from the library as a JPEG.
+
+## What is still a human step
+
+The app cannot create these for you, and nothing here was purchased:
+
+1. Create the Google Cloud OAuth client and paste the client ID.
+2. Create the referrer-restricted Drive API key and put it in `public/config.json` if buyers on other phones should open the link.
+3. Create a Gemini key in AI Studio and save it in Settings.
+4. Create the public GitHub (or Cloudflare / Netlify) project and add its origin to the OAuth client.
+5. Optional: buy a domain yourself, about $7/year.
+
+To use the original logo artwork, save it as `brand/source.png` and run `npm run brand`. That crops the crown, SSC shield, and "Stemp's Sports Cards" wordmark, and leaves off the "$1 Football Cards" promo.
