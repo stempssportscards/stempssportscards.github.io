@@ -10,6 +10,8 @@ import { PublicSalePage } from "./views/PublicSale.tsx";
 import { SaleDesk } from "./views/SaleDesk.tsx";
 import { Settings } from "./views/Settings.tsx";
 import { Shelf } from "./views/Shelf.tsx";
+import { BulkAdd } from "./views/BulkAdd.tsx";
+import { needsDetails } from "./lib/drafts.ts";
 
 function useRoute(): Route {
   const [hash, setHash] = useState(() => window.location.hash);
@@ -43,7 +45,10 @@ export default function App() {
   if (!signedIn && route.name !== "settings") return <Landing />;
 
   function back() {
-    if (route.name === "edit") go(`/card/${route.id}`);
+    if (route.name === "edit") {
+      const editing = library.cards.find((item) => item.id === route.id);
+      go(editing && needsDetails(editing) ? "/needs" : `/card/${route.id}`);
+    }
     else go("/");
   }
 
@@ -57,7 +62,7 @@ export default function App() {
         </div>
         <Brand onClick={() => go("/")} />
       </header>
-      {route.name === "shelf" ? <Shelf /> : null}
+      {route.name === "shelf" ? <Shelf key={route.filter ?? "all"} initialFilter={route.filter} /> : null}
       {route.name === "add" ? <Editor id={null} /> : null}
       {route.name === "edit" ? <Editor id={route.id} /> : null}
       {route.name === "card" ? <CardDetail id={route.id} /> : null}
@@ -91,7 +96,9 @@ function Editor({ id }: { id: string | null }) {
   }
   return (
     <main className="page withtabs">
-      <h2>{card ? "Edit card" : "Add a card"}</h2>
+      <h2>{card ? (needsDetails(card) ? "Add details" : "Edit card") : "Add a card"}</h2>
+      {card ? null : <BulkAdd />}
+      {card ? null : <p className="orLine"><span>or add one card</span></p>}
       <CardForm
         initial={card}
         initialPhotoUrl={photoUrl}
@@ -103,10 +110,12 @@ function Editor({ id }: { id: string | null }) {
             model: library.geminiModel,
           })
         }
-        onCancel={() => go(card ? `/card/${card.id}` : "/")}
+        onCancel={() => go(card ? (needsDetails(card) ? "/needs" : `/card/${card.id}`) : "/")}
         onSave={async (input) => {
+          const wasDraft = card ? needsDetails(card) : false;
           const saved = await library.saveCard(input);
-          go(`/card/${saved}`);
+          const remaining = library.cards.filter((item) => item.id !== saved && needsDetails(item)).length;
+          go(wasDraft && remaining > 0 ? "/needs" : `/card/${saved}`);
         }}
       />
     </main>

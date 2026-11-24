@@ -264,3 +264,23 @@ button.slim { min-height: 40px; padding: 4px 0; }
 .sheet h2 { margin-top: 0; }
 
 :focus-visible { outline: 3px solid var(--goldLt); outline-offset: 2px; }
+
+/* Bulk photo upload + needs-details drafts */
+.bulkBox { margin: 6px 0 14px; display: grid; gap: 8px; }
+.bulkBox.compact { margin: 10px 0; }
+.bulkBox p { margin: 0; }
+.bulkBar { height: 8px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); overflow: hidden; }
+.bulkBar span { display: block; height: 100%; background: var(--gold); transition: width 0.2s; }
+.okBox { color: var(--fg); background: var(--goldSoft); border: 1px solid var(--goldDeep); padding: 10px 12px; border-radius: 12px; display: grid; gap: 8px; }
+.okBox p, .bulkBox .warn p { margin: 0; }
+.failList { margin: 0; padding-left: 18px; font-size: 0.9rem; word-break: break-word; }
+.orLine { display: flex; align-items: center; gap: 10px; color: var(--mut); font-size: 0.85rem; margin: 4px 0 12px; }
+.orLine::before, .orLine::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.draftStrip { margin: 14px 0 6px; }
+.draftHead { display: flex; align-items: center; justify-content: space-between; }
+.draftHead h3 { margin: 0; font-size: 1rem; color: var(--goldLt); }
+.draftRow { display: flex; gap: 8px; overflow-x: auto; padding: 6px 0; -webkit-overflow-scrolling: touch; }
+.draftGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; }
+.draftTile { padding: 0; background: none; border: none; display: grid; gap: 4px; justify-items: center; color: var(--goldLt); min-height: 0; }
+.draftGrid .draftTile .thumb { width: 100%; height: auto; aspect-ratio: 3 / 4; }
+.pill.draft { background: var(--warnBg); color: var(--warn); margin-bottom: 2px; }

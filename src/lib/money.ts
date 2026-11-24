@@ -1,4 +1,5 @@
 import type { Card, CardStatus } from "../types.ts";
+import { needsDetails } from "./drafts.ts";
 
 export function dollarsToCents(raw: string): number | null {
   const trimmed = raw.trim().replace(/[$,\s]/g, "");
@@ -20,7 +21,7 @@ export function centsToInput(cents: number | null): string {
 }
 
 export function formatCents(cents: number | null): string {
-  if (cents == null) return "—";
+  if (cents == null || !Number.isFinite(cents)) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
@@ -35,12 +36,15 @@ export function cardProfit(card: {
   askingCents: number | null;
   soldCents: number | null;
 }): Profit {
+  const buy = safe(card.buyCents);
   if (card.status === "sold") {
-    if (card.soldCents == null || card.buyCents == null) return { kind: "realized", cents: null };
-    return { kind: "realized", cents: card.soldCents - card.buyCents };
+    const sold = safe(card.soldCents);
+    if (sold == null || buy == null) return { kind: "realized", cents: null };
+    return { kind: "realized", cents: sold - buy };
   }
-  if (card.askingCents == null || card.buyCents == null) return { kind: "potential", cents: null };
-  return { kind: "potential", cents: card.askingCents - card.buyCents };
+  const asking = safe(card.askingCents);
+  if (asking == null || buy == null) return { kind: "potential", cents: null };
+  return { kind: "potential", cents: asking - buy };
 }
 
 export function formatProfit(profit: Profit): string | null {
@@ -60,6 +64,11 @@ export interface ShelfSummary {
   realizedCents: number;
   missingCost: number;
   missingAsking: number;
+  needsDetailsCount: number;
+}
+
+function safe(cents: number | null | undefined): number | null {
+  return typeof cents === "number" && Number.isFinite(cents) ? cents : null;
 }
 
 export function summarize(cards: Card[]): ShelfSummary {
@@ -71,8 +80,10 @@ export function summarize(cards: Card[]): ShelfSummary {
   let realizedCents = 0;
   let missingCost = 0;
   let missingAsking = 0;
+  let needsDetailsCount = 0;
 
   for (const card of cards) {
+    if (needsDetails(card)) needsDetailsCount += 1;
     if (card.status === "sold") {
       soldCount += 1;
       const profit = cardProfit(card);
@@ -81,10 +92,12 @@ export function summarize(cards: Card[]): ShelfSummary {
     }
     if (card.status === "for_sale") forSaleCount += 1;
     else ownedCount += 1;
-    if (card.buyCents == null) missingCost += 1;
-    else costCents += card.buyCents;
-    if (card.askingCents == null) missingAsking += 1;
-    else askingCents += card.askingCents;
+    const buy = safe(card.buyCents);
+    const asking = safe(card.askingCents);
+    if (buy == null) missingCost += 1;
+    else costCents += buy;
+    if (asking == null) missingAsking += 1;
+    else askingCents += asking;
   }
 
   return {
@@ -97,5 +110,6 @@ export function summarize(cards: Card[]): ShelfSummary {
     realizedCents,
     missingCost,
     missingAsking,
+    needsDetailsCount,
   };
 }

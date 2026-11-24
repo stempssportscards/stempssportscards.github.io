@@ -18,6 +18,8 @@ export interface Card {
   soldDate: string | null;
   status: CardStatus;
   photoShared: boolean;
+  /** Saved from a bulk photo upload; details are added later. Absent on older cards. */
+  draft?: boolean;
 }
 
 export interface CollectionFile {

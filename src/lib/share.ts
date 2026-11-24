@@ -1,4 +1,5 @@
 import type { Card, CollectionFile, PublicCard, PublicCatalog } from "../types.ts";
+import { isListable } from "./drafts.ts";
 
 const STATUSES = new Set(["owned", "for_sale", "sold"]);
 
@@ -33,6 +34,7 @@ export function parseCard(raw: unknown): Card | null {
     soldDate: typeof record.soldDate === "string" ? record.soldDate : null,
     status,
     photoShared: record.photoShared === true,
+    ...(record.draft === true ? { draft: true } : {}),
   };
 }
 
@@ -51,7 +53,7 @@ export function publicPhotoUrl(fileId: string): string {
 export function toPublicCatalog(cards: Card[], photoUrl: (card: Card) => string, updatedAt = new Date().toISOString()): PublicCatalog {
   const listed: PublicCard[] = [];
   for (const card of cards) {
-    if (card.status !== "for_sale") continue;
+    if (!isListable(card)) continue;
     listed.push({
       id: card.id,
       player: card.player,

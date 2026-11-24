@@ -3,10 +3,12 @@ import { formatCents } from "../lib/money.ts";
 import { go } from "../lib/route.ts";
 import { cardSubtitle, cardTitle } from "../lib/text.ts";
 import { useLibrary } from "../state.tsx";
+import { isListable, needsDetails } from "../lib/drafts.ts";
 
 export function SaleDesk() {
   const library = useLibrary();
-  const listed = library.cards.filter((card) => card.status === "for_sale");
+  const listed = library.cards.filter(isListable);
+  const waiting = library.cards.filter((card) => card.status === "for_sale" && needsDetails(card)).length;
   const [link, setLink] = useState("");
   const [warning, setWarning] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -57,6 +59,9 @@ export function SaleDesk() {
           ))}
         </ul>
       )}
+      {waiting ? (
+        <p className="muted small">{waiting === 1 ? "1 for-sale card needs" : `${waiting} for-sale cards need`} a player name before buyers can see {waiting === 1 ? "it" : "them"}.</p>
+      ) : null}
       <button className="primary big" type="button" disabled={busy} onClick={() => void publish()}>
         {busy ? "Publishing…" : library.shareFileId ? "Update buyer link" : "Publish buyer link"}
       </button>

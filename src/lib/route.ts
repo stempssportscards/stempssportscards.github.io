@@ -1,5 +1,5 @@
 export type Route =
-  | { name: "shelf" }
+  | { name: "shelf"; filter?: "needs_details" }
   | { name: "add" }
   | { name: "card"; id: string }
   | { name: "edit"; id: string }
@@ -18,6 +18,7 @@ export function parseRoute(hash: string): Route {
   });
   if (parts[0] === "s" && parts[1]) return { name: "public", fileId: parts[1] };
   if (parts[0] === "add") return { name: "add" };
+  if (parts[0] === "needs") return { name: "shelf", filter: "needs_details" };
   if (parts[0] === "card" && parts[1]) return { name: "card", id: parts[1] };
   if (parts[0] === "edit" && parts[1]) return { name: "edit", id: parts[1] };
   if (parts[0] === "sale") return { name: "sale" };

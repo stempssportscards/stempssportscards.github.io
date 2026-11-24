@@ -59,6 +59,12 @@ export function CardForm({
     };
   }, [preview, initialPhotoUrl]);
 
+  useEffect(() => {
+    if (!photoBlob && initialPhotoUrl) setPreview(initialPhotoUrl);
+    // Only when the saved photo arrives; a newly picked photo wins.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPhotoUrl]);
+
   const buyCents = dollarsToCents(buy);
   const askingCents = dollarsToCents(asking);
   const soldCents = dollarsToCents(sold);
@@ -178,6 +184,9 @@ export function CardForm({
         <input ref={library} aria-label="Photo library" type="file" accept="image/*" hidden onChange={(event) => void onFile(event.target.files?.[0])} />
       </div>
 
+      {initial?.draft && !initial.player.trim() ? (
+        <p className="muted small">Saved from your photo batch. Tap "Read the card" to fill in the details, or type them in. Nothing is required.</p>
+      ) : null}
       <button type="button" className="primary big" disabled={reading || (!photoBlob && !initial?.photoId)} onClick={() => void onRead()}>
         {reading ? "Reading the card…" : "Read the card"}
       </button>

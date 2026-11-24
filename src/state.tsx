@@ -14,7 +14,8 @@ import {
   writeSettings,
 } from "./lib/drive.ts";
 import { DEFAULT_GEMINI_MODEL } from "./lib/gemini.ts";
-import { blobToDataUrl } from "./lib/images.ts";
+import { draftCard, isListable, nextDraftFlag, runPool } from "./lib/drafts.ts";
+import { blobToDataUrl, fileToJpeg } from "./lib/images.ts";
 import { shareHash, toPublicCatalog } from "./lib/share.ts";
 import { clearMode, clearToken, fetchProfile, markDemo, readDemoFlag, readToken, requestGoogleToken, writeToken, type StoredToken } from "./lib/session.ts";
 import type { Card, CardInput, PublicCatalog } from "./types.ts";
@@ -24,6 +25,16 @@ const API_KEY = "ssc.googleApiKey";
 const GEMINI_KEY = "ssc.geminiKey";
 const GEMINI_MODEL = "ssc.geminiModel";
 const GEMINI_DRIVE = "ssc.geminiInDrive";
+
+export interface BulkProgress {
+  finished: number;
+  total: number;
+}
+
+export interface BulkResult {
+  saved: number;
+  failed: { name: string; message: string }[];
+}
 
 export interface PublishResult {
   url: string;
@@ -57,6 +68,7 @@ interface LibraryValue {
   signOut: () => void;
   reload: () => Promise<void>;
   saveCard: (input: CardInput) => Promise<string>;
+  addPhotos: (files: File[], onProgress?: (progress: BulkProgress) => void) => Promise<BulkResult>;
   deleteCard: (id: string) => Promise<void>;
   publish: () => Promise<PublishResult>;
   photoSrc: (photoId: string) => string | null;
@@ -214,6 +226,22 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /** Shelf-file writes run one at a time so a bulk upload and a hand edit can't overwrite each other. */
+  const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+  function enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const run = writeChain.current.then(task, task);
+    writeChain.current = run.catch(() => undefined);
+    return run;
+  }
+  function persistQueued(update: (cards: Card[]) => Card[]): Promise<Card[]> {
+    return enqueue(async () => {
+      const next = update(cardsRef.current);
+      await persist(next);
+      cardsRef.current = next;
+      return next;
+    });
+  }
+
   const apiKey = fileConfig.googleApiKey || apiKeyLocal;
 
   const value = useMemo<LibraryValue>(() => {
@@ -342,10 +370,69 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           soldDate: input.status === "sold" ? input.soldDate : null,
           status: input.status,
           photoShared,
+          ...(nextDraftFlag(existing?.draft, input.player) ? { draft: true } : {}),
         };
-        const next = existing ? cardsRef.current.map((item) => (item.id === id ? card : item)) : [card, ...cardsRef.current];
-        await persist(next);
+        await persistQueued((list) => (list.some((item) => item.id === id) ? list.map((item) => (item.id === id ? card : item)) : [card, ...list]));
         return id;
+      },
+      addPhotos: async (files, onProgress) => {
+        const demo = modeRef.current === "demo";
+        if (!demo && (!tokenRef.current || !folderId.current)) throw new Error("Sign in again before saving.");
+        const base = Date.now();
+        const pending: Card[] = [];
+        let saved = 0;
+        let flushFailed: string | null = null;
+        async function flush(): Promise<void> {
+          if (pending.length === 0) return;
+          const batch = pending.splice(0, pending.length);
+          // Newest first; keep the library order inside a batch.
+          batch.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          await enqueue(async () => {
+            const next = [...batch, ...cardsRef.current];
+            await persist(next);
+            cardsRef.current = next;
+          }).then(
+            () => {
+              saved += batch.length;
+            },
+            (reason) => {
+              flushFailed = reason instanceof Error ? reason.message : "Could not update the shelf file.";
+            },
+          );
+        }
+        onProgress?.({ finished: 0, total: files.length });
+        const failures = await runPool(
+          files,
+          3,
+          async (file, index) => {
+            const jpeg = await fileToJpeg(file);
+            const id = crypto.randomUUID();
+            let photoId: string;
+            if (demo) {
+              photoId = crypto.randomUUID();
+              await demoPutPhoto(photoId, jpeg);
+            } else {
+              const current = tokenRef.current;
+              const folder = folderId.current;
+              if (!current || !folder) throw new Error("Sign in again before saving.");
+              try {
+                photoId = await uploadPhoto(current.accessToken, folder, id, jpeg);
+              } catch (reason) {
+                if (reason instanceof AuthError) setNeedsReauth(true);
+                throw reason;
+              }
+            }
+            rememberPhoto(photoId, jpeg);
+            // Earlier picks get a later stamp so the shelf shows them in library order.
+            pending.push(draftCard(id, photoId, new Date(base + files.length - index).toISOString()));
+            if (pending.length >= 4) await flush();
+          },
+          (finished, total) => onProgress?.({ finished, total }),
+        );
+        await flush();
+        const failed = failures.map((failure) => ({ name: failure.item.name || `Photo ${failure.index + 1}`, message: failure.message }));
+        if (flushFailed) failed.push({ name: "Shelf file", message: `${flushFailed} Some photos may not show yet. Tap Reload from Drive.` });
+        return { saved, failed };
       },
       deleteCard: async (id) => {
         const card = cardsRef.current.find((item) => item.id === id);
@@ -361,14 +448,14 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         const previous = photos.current.get(card.photoId);
         if (previous) URL.revokeObjectURL(previous);
         photos.current.delete(card.photoId);
-        await persist(cardsRef.current.filter((item) => item.id !== id));
+        await persistQueued((list) => list.filter((item) => item.id !== id));
       },
       publish: async () => {
         const origin = `${window.location.origin}${window.location.pathname}`;
         if (modeRef.current === "demo") {
           const urls = new Map<string, string>();
           for (const card of cardsRef.current) {
-            if (card.status !== "for_sale") continue;
+            if (!isListable(card)) continue;
             const blob = await demoGetPhoto(card.photoId);
             urls.set(card.id, blob ? await blobToDataUrl(blob) : "");
           }
@@ -383,19 +470,19 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         const current = tokenRef.current;
         const folder = folderId.current;
         if (!current || !folder) throw new Error("Sign in again before publishing.");
-        const next: Card[] = [];
+        const shared = new Map<string, boolean>();
         for (const card of cardsRef.current) {
-          if (card.status === "for_sale") {
+          if (isListable(card)) {
             await shareAnyone(current.accessToken, card.photoId);
-            next.push({ ...card, photoShared: true });
+            shared.set(card.id, true);
           } else if (card.photoShared) {
             await unshareAnyone(current.accessToken, card.photoId);
-            next.push({ ...card, photoShared: false });
-          } else {
-            next.push(card);
+            shared.set(card.id, false);
           }
         }
-        await persist(next);
+        const next = await persistQueued((list) =>
+          list.map((card) => (shared.has(card.id) ? { ...card, photoShared: shared.get(card.id) === true } : card)),
+        );
         const catalog = toPublicCatalog(next, (card) => `https://lh3.googleusercontent.com/d/${encodeURIComponent(card.photoId)}=w1600`);
         const fileId = await writeJson(current.accessToken, {
           id: shareFileId,
