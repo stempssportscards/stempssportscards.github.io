@@ -13,8 +13,9 @@ import {
   writeJson,
   writeSettings,
 } from "./lib/drive.ts";
-import { DEFAULT_GEMINI_MODEL } from "./lib/gemini.ts";
-import { draftCard, isListable, nextDraftFlag, runPool } from "./lib/drafts.ts";
+import { DEFAULT_GEMINI_MODEL, RELAY_QUOTA_MESSAGE, identifyCard } from "./lib/gemini.ts";
+import { runReadQueue } from "./lib/readQueue.ts";
+import { applyRead, draftCard, isListable, isReading, markFailed, nextDraftFlag, queueAll, runPool } from "./lib/drafts.ts";
 import { blobToDataUrl, fileToJpeg } from "./lib/images.ts";
 import { shareHash, toPublicCatalog } from "./lib/share.ts";
 import { clearMode, clearToken, fetchProfile, markDemo, readDemoFlag, readToken, requestGoogleToken, writeToken, type StoredToken } from "./lib/session.ts";
@@ -34,6 +35,15 @@ export interface BulkProgress {
 export interface BulkResult {
   saved: number;
   failed: { name: string; message: string }[];
+}
+
+export interface ReadStatus {
+  running: boolean;
+  /** Cards finished in this run. */
+  done: number;
+  /** Cards still waiting, including the one being read. */
+  waiting: number;
+  paused: string | null;
 }
 
 export interface PublishResult {
@@ -68,7 +78,11 @@ interface LibraryValue {
   signOut: () => void;
   reload: () => Promise<void>;
   saveCard: (input: CardInput) => Promise<string>;
-  addPhotos: (files: File[], onProgress?: (progress: BulkProgress) => void) => Promise<BulkResult>;
+  addPhotos: (files: File[], onProgress?: (progress: BulkProgress) => void, options?: { autoRead?: boolean }) => Promise<BulkResult>;
+  canAutoRead: boolean;
+  readStatus: ReadStatus;
+  readAll: () => Promise<number>;
+  resumeReads: () => void;
   deleteCard: (id: string) => Promise<void>;
   publish: () => Promise<PublishResult>;
   photoSrc: (photoId: string) => string | null;
@@ -113,6 +127,11 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [saveGeminiToDrive, setSaveGeminiToDrive] = useState(false);
   const [geminiFromDrive, setGeminiFromDrive] = useState(false);
   const [photoVersion, setPhotoVersion] = useState(0);
+  const [readRunning, setReadRunning] = useState(false);
+  const [readDone, setReadDone] = useState(0);
+  const [readPaused, setReadPaused] = useState<string | null>(null);
+  const readRunningRef = useRef(false);
+  const readerRef = useRef({ apiKey: "", relayUrl: "", model: DEFAULT_GEMINI_MODEL });
   const photos = useRef(new Map<string, string>());
   const folderId = useRef<string | null>(null);
   const collectionId = useRef<string | null>(null);
@@ -243,6 +262,73 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   }
 
   const apiKey = fileConfig.googleApiKey || apiKeyLocal;
+  const canAutoRead = Boolean(geminiKey.trim() || fileConfig.geminiRelayUrl.trim());
+  readerRef.current = { apiKey: geminiKey, relayUrl: fileConfig.geminiRelayUrl, model: geminiModel };
+
+  async function runReads(): Promise<void> {
+    if (readRunningRef.current) return;
+    readRunningRef.current = true;
+    setReadRunning(true);
+    setReadDone(0);
+    const startMode = modeRef.current;
+    const startToken = tokenRef.current?.accessToken ?? null;
+    try {
+      const end = await runReadQueue({
+        next: () => cardsRef.current.find(isReading) ?? null,
+        read: async (card) => {
+          const blob = await (async () => {
+            if (modeRef.current === "demo") return demoGetPhoto(card.photoId);
+            const current = tokenRef.current;
+            if (!current) throw new Error("Sign in again to keep reading cards.");
+            return downloadFile(current.accessToken, card.photoId);
+          })();
+          if (!blob) throw new Error("The photo for this card is missing.");
+          const reader = readerRef.current;
+          const result = await identifyCard(blob, reader);
+          if (result.source === "mock") throw new Error("No card scanner is set up.");
+          return result;
+        },
+        saveRead: async (card, read) => {
+          await persistQueued((list) => list.map((item) => (item.id === card.id ? applyRead(item, read) : item)));
+        },
+        saveFailed: async (card) => {
+          await persistQueued((list) => list.map((item) => (item.id === card.id ? markFailed(item) : item)));
+        },
+        isQuota: (error) => error instanceof Error && (error.message === RELAY_QUOTA_MESSAGE || /free limit|quota|rate.?limit|429/i.test(error.message)),
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        shouldStop: () => modeRef.current !== startMode || (tokenRef.current?.accessToken ?? null) !== startToken,
+        onDone: () => setReadDone((count) => count + 1),
+      });
+      if (end.kind === "paused") {
+        setReadPaused(
+          end.message === RELAY_QUOTA_MESSAGE || /free limit|quota/i.test(end.message)
+            ? "Card reading paused: the free scanner hit its limit. It picks up again later, or tap Resume."
+            : `Card reading paused: ${end.message}`,
+        );
+      }
+    } catch (reason) {
+      setReadPaused(`Card reading paused: ${reason instanceof Error ? reason.message : "something went wrong."}`);
+    } finally {
+      readRunningRef.current = false;
+      setReadRunning(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!readPaused) return;
+    // Free-limit pauses clear themselves; the scanner's per-minute limit resets quickly.
+    const timer = setTimeout(() => setReadPaused(null), 10 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [readPaused]);
+
+  const hasPendingReads = cards.some(isReading);
+  useEffect(() => {
+    if (mode === "signed-out" || loading || needsReauth || !canAutoRead || readPaused || !hasPendingReads) return;
+    if (readRunningRef.current) return;
+    void runReads();
+    // runReads reads the latest values through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, loading, needsReauth, canAutoRead, readPaused, hasPendingReads, readRunning]);
 
   const value = useMemo<LibraryValue>(() => {
     void photoVersion;
@@ -370,12 +456,14 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           soldDate: input.status === "sold" ? input.soldDate : null,
           status: input.status,
           photoShared,
-          ...(nextDraftFlag(existing?.draft, input.player) ? { draft: true } : {}),
+          ...(nextDraftFlag(existing?.draft, input.player) ? { draft: true, ...(existing?.readState ? { readState: existing.readState } : {}) } : {}),
+          ...(existing?.bulk || existing?.draft ? { bulk: true } : {}),
         };
         await persistQueued((list) => (list.some((item) => item.id === id) ? list.map((item) => (item.id === id ? card : item)) : [card, ...list]));
         return id;
       },
-      addPhotos: async (files, onProgress) => {
+      addPhotos: async (files, onProgress, options) => {
+        const autoRead = options?.autoRead === true;
         const demo = modeRef.current === "demo";
         if (!demo && (!tokenRef.current || !folderId.current)) throw new Error("Sign in again before saving.");
         const base = Date.now();
@@ -424,7 +512,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
             }
             rememberPhoto(photoId, jpeg);
             // Earlier picks get a later stamp so the shelf shows them in library order.
-            pending.push(draftCard(id, photoId, new Date(base + files.length - index).toISOString()));
+            const draft = draftCard(id, photoId, new Date(base + files.length - index).toISOString());
+            pending.push(autoRead ? { ...draft, readState: "pending" } : draft);
             if (pending.length >= 4) await flush();
           },
           (finished, total) => onProgress?.({ finished, total }),
@@ -434,6 +523,24 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         if (flushFailed) failed.push({ name: "Shelf file", message: `${flushFailed} Some photos may not show yet. Tap Reload from Drive.` });
         return { saved, failed };
       },
+      canAutoRead,
+      readStatus: {
+        running: readRunning,
+        done: readDone,
+        waiting: cards.filter(isReading).length,
+        paused: readPaused,
+      },
+      readAll: async () => {
+        let queued = 0;
+        await persistQueued((list) => {
+          const result = queueAll(list);
+          queued = result.queued;
+          return result.cards;
+        });
+        setReadPaused(null);
+        return queued;
+      },
+      resumeReads: () => setReadPaused(null),
       deleteCard: async (id) => {
         const card = cardsRef.current.find((item) => item.id === id);
         if (!card) return;
@@ -543,6 +650,10 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     };
   }, [
     apiKey,
+    canAutoRead,
+    readRunning,
+    readDone,
+    readPaused,
     cards,
     clientId,
     error,

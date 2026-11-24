@@ -11,7 +11,8 @@ import { SaleDesk } from "./views/SaleDesk.tsx";
 import { Settings } from "./views/Settings.tsx";
 import { Shelf } from "./views/Shelf.tsx";
 import { BulkAdd } from "./views/BulkAdd.tsx";
-import { needsDetails } from "./lib/drafts.ts";
+import { needsDetails, needsPrices } from "./lib/drafts.ts";
+import { ReadStatusBar } from "./views/ReadStatusBar.tsx";
 
 function useRoute(): Route {
   const [hash, setHash] = useState(() => window.location.hash);
@@ -47,7 +48,7 @@ export default function App() {
   function back() {
     if (route.name === "edit") {
       const editing = library.cards.find((item) => item.id === route.id);
-      go(editing && needsDetails(editing) ? "/needs" : `/card/${route.id}`);
+      go(editing && needsDetails(editing) ? "/needs" : editing && needsPrices(editing) ? "/prices" : `/card/${route.id}`);
     }
     else go("/");
   }
@@ -68,6 +69,7 @@ export default function App() {
       {route.name === "card" ? <CardDetail id={route.id} /> : null}
       {route.name === "sale" ? <SaleDesk /> : null}
       {route.name === "settings" ? <Settings /> : null}
+      {signedIn ? <ReadStatusBar /> : null}
       {signedIn ? <Tabs route={route} /> : null}
     </>
   );
@@ -110,12 +112,15 @@ function Editor({ id }: { id: string | null }) {
             model: library.geminiModel,
           })
         }
-        onCancel={() => go(card ? (needsDetails(card) ? "/needs" : `/card/${card.id}`) : "/")}
+        onCancel={() => go(card ? (needsDetails(card) ? "/needs" : needsPrices(card) ? "/prices" : `/card/${card.id}`) : "/")}
         onSave={async (input) => {
           const wasDraft = card ? needsDetails(card) : false;
+          const wasPrices = card ? needsPrices(card) : false;
           const saved = await library.saveCard(input);
-          const remaining = library.cards.filter((item) => item.id !== saved && needsDetails(item)).length;
-          go(wasDraft && remaining > 0 ? "/needs" : `/card/${saved}`);
+          const others = library.cards.filter((item) => item.id !== saved);
+          if (wasDraft && others.some(needsDetails)) go("/needs");
+          else if (wasPrices && others.some(needsPrices)) go("/prices");
+          else go(`/card/${saved}`);
         }}
       />
     </main>

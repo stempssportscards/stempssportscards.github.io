@@ -7,6 +7,7 @@ describe("parseRoute", () => {
     expect(parseRoute("#/")).toEqual({ name: "shelf" });
     expect(parseRoute("#/add")).toEqual({ name: "add" });
     expect(parseRoute("#/needs")).toEqual({ name: "shelf", filter: "needs_details" });
+    expect(parseRoute("#/prices")).toEqual({ name: "shelf", filter: "needs_prices" });
     expect(parseRoute("#/card/abc")).toEqual({ name: "card", id: "abc" });
     expect(parseRoute("#/edit/abc")).toEqual({ name: "edit", id: "abc" });
     expect(parseRoute("#/sale")).toEqual({ name: "sale" });

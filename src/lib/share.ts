@@ -35,6 +35,8 @@ export function parseCard(raw: unknown): Card | null {
     status,
     photoShared: record.photoShared === true,
     ...(record.draft === true ? { draft: true } : {}),
+    ...(record.bulk === true ? { bulk: true } : {}),
+    ...(record.readState === "pending" || record.readState === "failed" ? { readState: record.readState } : {}),
   };
 }
 

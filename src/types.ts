@@ -20,6 +20,10 @@ export interface Card {
   photoShared: boolean;
   /** Saved from a bulk photo upload; details are added later. Absent on older cards. */
   draft?: boolean;
+  /** Came from a bulk upload. Kept after details are added so "Needs prices" can find it. */
+  bulk?: boolean;
+  /** Background card read: "pending" waits in the queue, "failed" means it couldn't be read. */
+  readState?: "pending" | "failed";
 }
 
 export interface CollectionFile {

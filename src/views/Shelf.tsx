@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatCents, formatProfit, cardProfit, summarize } from "../lib/money.ts";
 import { filterCards, type StatusFilter } from "../lib/filter.ts";
-import { needsDetails } from "../lib/drafts.ts";
+import { isReading, needsDetails, needsPrices, readFailed } from "../lib/drafts.ts";
 import { go } from "../lib/route.ts";
 import { cardSubtitle, cardTitle } from "../lib/text.ts";
 import { useLibrary } from "../state.tsx";
@@ -23,9 +23,26 @@ export function Shelf({ initialFilter }: { initialFilter?: StatusFilter }) {
   const visible = filterCards(library.cards, query, status);
   const drafts = filterCards(library.cards, "", "needs_details");
   const draftCount = drafts.length;
-  const filters: { id: StatusFilter; label: string }[] = draftCount > 0 || status === "needs_details"
-    ? [...FILTERS, { id: "needs_details", label: `Needs details (${draftCount})` }]
-    : FILTERS;
+  const priceCount = library.cards.filter(needsPrices).length;
+  const unread = drafts.filter((card) => !isReading(card)).length;
+  const filters: { id: StatusFilter; label: string }[] = [...FILTERS];
+  if (draftCount > 0 || status === "needs_details") filters.push({ id: "needs_details", label: `Needs details (${draftCount})` });
+  if (priceCount > 0 || status === "needs_prices") filters.push({ id: "needs_prices", label: `Needs prices (${priceCount})` });
+  const [readMsg, setReadMsg] = useState<string | null>(null);
+
+  async function readAll() {
+    setReadMsg(null);
+    try {
+      const queued = await library.readAll();
+      setReadMsg(queued ? `Reading ${queued} ${queued === 1 ? "card" : "cards"} in the background.` : "Those cards are already in line to be read.");
+    } catch (reason) {
+      setReadMsg(reason instanceof Error ? reason.message : "Could not start reading.");
+    }
+  }
+
+  const readAllButton = library.canAutoRead && unread > 0 ? (
+    <button type="button" className="secondary slim" onClick={() => void readAll()}>Read all ({unread})</button>
+  ) : null;
 
   return (
     <main className="page withtabs">
@@ -66,16 +83,28 @@ export function Shelf({ initialFilter }: { initialFilter?: StatusFilter }) {
         </div>
       </section>
 
-      {draftCount > 0 && status !== "needs_details" ? (
+      {priceCount > 0 && status !== "needs_prices" ? (
+        <button type="button" className="card tap priceNudge" onClick={() => setStatus("needs_prices")}>
+          <strong>Needs prices ({priceCount})</strong>
+          <span className="muted small">Read and ready. Add what you paid and your asking price.</span>
+        </button>
+      ) : null}
+
+      {draftCount > 0 && status !== "needs_details" && status !== "needs_prices" ? (
         <section className="draftStrip" aria-label={`Needs details (${draftCount})`}>
           <div className="draftHead">
             <h3>Needs details ({draftCount})</h3>
-            <button type="button" className="ghost slim" onClick={() => setStatus("needs_details")}>See all</button>
+            <span className="row tight">
+              {readAllButton}
+              <button type="button" className="ghost slim" onClick={() => setStatus("needs_details")}>See all</button>
+            </span>
           </div>
+          {readMsg ? <p className="muted small">{readMsg}</p> : null}
           <div className="draftRow">
             {drafts.slice(0, 12).map((card) => (
               <button key={card.id} type="button" className="draftTile" aria-label="Add details for this photo" onClick={() => go(`/edit/${card.id}`)}>
                 <Thumb photoId={card.photoId} alt="" />
+                <TileTag card={card} />
               </button>
             ))}
           </div>
@@ -106,32 +135,45 @@ export function Shelf({ initialFilter }: { initialFilter?: StatusFilter }) {
         </div>
       ) : null}
       {!library.loading && library.cards.length > 0 && visible.length === 0 ? (
-        <p className="empty">{status === "needs_details" && !query.trim() ? "Every card has details. Nice." : "No cards match that search."}</p>
+        <p className="empty">
+          {status === "needs_details" && !query.trim()
+            ? "Every card has details. Nice."
+            : status === "needs_prices" && !query.trim()
+              ? "Every card has its prices. Nice."
+              : "No cards match that search."}
+        </p>
       ) : null}
 
       {status === "needs_details" ? (
         <>
-          <p className="muted small">Tap a photo to add its details. "Read the card" can fill them in from the photo.</p>
+          <div className="readAllRow">
+            <p className="muted small">Tap a photo to add its details{library.canAutoRead ? ", or read them all at once" : ""}.</p>
+            {readAllButton}
+          </div>
+          {readMsg ? <p className="muted small">{readMsg}</p> : null}
           <BulkAdd compact />
           <div className="draftGrid">
             {visible.map((card) => (
               <button key={card.id} type="button" className="draftTile" aria-label="Add details for this photo" onClick={() => go(`/edit/${card.id}`)}>
                 <Thumb photoId={card.photoId} alt="" />
-                <span className="tiny">Add details</span>
+                {isReading(card) || readFailed(card) ? <TileTag card={card} /> : <span className="tiny">Add details</span>}
               </button>
             ))}
           </div>
         </>
       ) : (
+      <>
+      {status === "needs_prices" && visible.length > 0 ? <p className="muted small">Tap a card to add what you paid and your asking price.</p> : null}
       <ul className="cardList">
         {visible.map((card) => (
           <li key={card.id}>
-            <button className="card tap cardRow" type="button" onClick={() => go(needsDetails(card) ? `/edit/${card.id}` : `/card/${card.id}`)}>
+            <button className="card tap cardRow" type="button" onClick={() => go(needsDetails(card) || status === "needs_prices" ? `/edit/${card.id}` : `/card/${card.id}`)}>
               <Thumb photoId={card.photoId} alt="" />
               <span className="grow">
                 <strong>{cardTitle(card.player)}</strong>
                 <span className="muted small">{cardSubtitle(card) || "Sports card"}</span>
-                {needsDetails(card) ? <span className="pill draft">Needs details</span> : null}
+                {isReading(card) ? <span className="pill draft">Reading…</span> : readFailed(card) ? <span className="pill fail">Couldn't read</span> : needsDetails(card) ? <span className="pill draft">Needs details</span> : null}
+                {needsPrices(card) ? <span className="pill prices">Needs prices</span> : null}
                 <span className={`pill ${card.status}`}>{card.status === "for_sale" ? "For sale" : card.status === "sold" ? "Sold" : "Owned"}</span>
               </span>
               <span className="priceCol">
@@ -142,9 +184,16 @@ export function Shelf({ initialFilter }: { initialFilter?: StatusFilter }) {
           </li>
         ))}
       </ul>
+      </>
       )}
     </main>
   );
+}
+
+function TileTag({ card }: { card: Card }) {
+  if (isReading(card)) return <span className="tileTag">Reading…</span>;
+  if (readFailed(card)) return <span className="tileTag fail">Couldn't read</span>;
+  return null;
 }
 
 function profitClass(card: Card): string {

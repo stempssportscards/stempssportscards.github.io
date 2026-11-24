@@ -284,3 +284,26 @@ button.slim { min-height: 40px; padding: 4px 0; }
 .draftTile { padding: 0; background: none; border: none; display: grid; gap: 4px; justify-items: center; color: var(--goldLt); min-height: 0; }
 .draftGrid .draftTile .thumb { width: 100%; height: auto; aspect-ratio: 3 / 4; }
 .pill.draft { background: var(--warnBg); color: var(--warn); margin-bottom: 2px; }
+
+/* Background card reading */
+.bulkChoice { margin: 0; }
+.bulkChoice .chip { flex: 1; font-size: 0.9rem; }
+.readBar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 30; width: min(92vw, 520px); display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px; background: #1d1910; border: 1px solid var(--goldDeep); color: var(--fg); font-size: 0.85rem; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+.readBar.paused { color: var(--warn); background: var(--warnBg); }
+.readBar .grow { flex: 1; }
+.readBar button { min-height: 32px; padding: 4px 8px; }
+.readMini { width: 64px; height: 6px; border-radius: 999px; background: #000; overflow: hidden; flex: none; }
+.readMini span { display: block; height: 100%; background: var(--gold); transition: width 0.3s; }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--goldDeep); border-top-color: var(--gold); animation: sscSpin 0.9s linear infinite; flex: none; }
+@keyframes sscSpin { to { transform: rotate(360deg); } }
+.tileTag { font-size: 0.7rem; font-weight: 800; color: var(--goldLt); }
+.tileTag.fail { color: var(--red); }
+.draftTile .tileTag { max-width: 64px; text-align: center; }
+.pill.prices { background: #1f2a14; color: var(--green); margin-bottom: 2px; }
+.pill.fail { background: #3a1714; color: var(--red); margin-bottom: 2px; }
+.readAllRow { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 6px 0; }
+.priceNudge { width: 100%; display: grid; gap: 2px; text-align: left; margin: 12px 0 0; border-color: var(--goldDeep); }
+.row.tight { display: flex; gap: 6px; align-items: center; }
+.draftHead .secondary.slim { white-space: nowrap; min-height: 36px; padding: 4px 10px; font-size: 0.85rem; }
+.readAllRow .secondary.slim { white-space: nowrap; flex: none; }
+body:has(.readBar) .withtabs { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }

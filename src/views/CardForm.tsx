@@ -185,7 +185,16 @@ export function CardForm({
       </div>
 
       {initial?.draft && !initial.player.trim() ? (
-        <p className="muted small">Saved from your photo batch. Tap "Read the card" to fill in the details, or type them in. Nothing is required.</p>
+        <p className="muted small">
+          {initial.readState === "pending"
+            ? "This card is in line to be read automatically. You can wait, tap \"Read the card\" now, or type the details in."
+            : initial.readState === "failed"
+              ? "This one couldn't be read automatically. Try \"Read the card\" again, or type the details in. Nothing is required."
+              : "Saved from your photo batch. Tap \"Read the card\" to fill in the details, or type them in. Nothing is required."}
+        </p>
+      ) : null}
+      {initial?.bulk && !initial.draft && (initial.buyCents == null || initial.askingCents == null) ? (
+        <p className="muted small">Details were read from the photo. Check them, then add what you paid and your asking price below.</p>
       ) : null}
       <button type="button" className="primary big" disabled={reading || (!photoBlob && !initial?.photoId)} onClick={() => void onRead()}>
         {reading ? "Reading the card…" : "Read the card"}

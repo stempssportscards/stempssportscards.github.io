@@ -1,5 +1,5 @@
 import type { Card, CardStatus } from "../types.ts";
-import { needsDetails } from "./drafts.ts";
+import { needsDetails, needsPrices } from "./drafts.ts";
 
 export function dollarsToCents(raw: string): number | null {
   const trimmed = raw.trim().replace(/[$,\s]/g, "");
@@ -65,6 +65,7 @@ export interface ShelfSummary {
   missingCost: number;
   missingAsking: number;
   needsDetailsCount: number;
+  needsPricesCount: number;
 }
 
 function safe(cents: number | null | undefined): number | null {
@@ -81,9 +82,11 @@ export function summarize(cards: Card[]): ShelfSummary {
   let missingCost = 0;
   let missingAsking = 0;
   let needsDetailsCount = 0;
+  let needsPricesCount = 0;
 
   for (const card of cards) {
     if (needsDetails(card)) needsDetailsCount += 1;
+    if (needsPrices(card)) needsPricesCount += 1;
     if (card.status === "sold") {
       soldCount += 1;
       const profit = cardProfit(card);
@@ -111,5 +114,6 @@ export function summarize(cards: Card[]): ShelfSummary {
     missingCost,
     missingAsking,
     needsDetailsCount,
+    needsPricesCount,
   };
 }
