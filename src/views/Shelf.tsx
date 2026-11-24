@@ -172,7 +172,7 @@ export function Shelf({ initialFilter }: { initialFilter?: StatusFilter }) {
               <span className="grow">
                 <strong>{cardTitle(card.player)}</strong>
                 <span className="muted small">{cardSubtitle(card) || "Sports card"}</span>
-                {isReading(card) ? <span className="pill draft">Reading…</span> : readFailed(card) ? <span className="pill fail">Couldn't read</span> : needsDetails(card) ? <span className="pill draft">Needs details</span> : null}
+                {isReading(card) ? <span className="pill draft">{library.readStatus.activeId === card.id ? "Reading…" : "Waiting…"}</span> : readFailed(card) ? <span className="pill fail">Couldn't read</span> : needsDetails(card) ? <span className="pill draft">Needs details</span> : null}
                 {needsPrices(card) ? <span className="pill prices">Needs prices</span> : null}
                 <span className={`pill ${card.status}`}>{card.status === "for_sale" ? "For sale" : card.status === "sold" ? "Sold" : "Owned"}</span>
               </span>
@@ -191,7 +191,8 @@ export function Shelf({ initialFilter }: { initialFilter?: StatusFilter }) {
 }
 
 function TileTag({ card }: { card: Card }) {
-  if (isReading(card)) return <span className="tileTag">Reading…</span>;
+  const library = useLibrary();
+  if (isReading(card)) return <span className="tileTag">{library.readStatus.activeId === card.id ? "Reading…" : "Waiting…"}</span>;
   if (readFailed(card)) return <span className="tileTag fail">Couldn't read</span>;
   return null;
 }

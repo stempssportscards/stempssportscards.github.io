@@ -187,7 +187,7 @@ export function CardForm({
       {initial?.draft && !initial.player.trim() ? (
         <p className="muted small">
           {initial.readState === "pending"
-            ? "This card is in line to be read automatically. You can wait, tap \"Read the card\" now, or type the details in."
+            ? "This card is waiting its turn to be read automatically. You can wait, tap \"Read the card\" now, or type the details in."
             : initial.readState === "failed"
               ? "This one couldn't be read automatically. Try \"Read the card\" again, or type the details in. Nothing is required."
               : "Saved from your photo batch. Tap \"Read the card\" to fill in the details, or type them in. Nothing is required."}

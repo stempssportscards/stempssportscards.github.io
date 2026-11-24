@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Card } from "../types.ts";
 import { applyRead, draftCard, isReading, markFailed, needsDetails, needsPrices, queueAll, readFailed } from "./drafts.ts";
-import type { Identification } from "./gemini.ts";
+import { readErrorKind, RELAY_QUOTA_MESSAGE, type Identification } from "./gemini.ts";
 import { summarize } from "./money.ts";
 import { parseCollection, toPublicCatalog } from "./share.ts";
 import { runReadQueue, type ReadQueueDeps } from "./readQueue.ts";
@@ -9,15 +9,19 @@ import { runReadQueue, type ReadQueueDeps } from "./readQueue.ts";
 const READ: Identification = { player: "Bo Nix", year: "2024", setName: "Panini Prizm", cardNumber: "#301", parallel: "Silver", grade: "", source: "gemini" };
 const pending = (id: string): Card => ({ ...draftCard(id, `p-${id}`, "2026-11-24T00:00:00.000Z"), readState: "pending" });
 
-function harness(cards: Card[], read: (card: Card, call: number) => Promise<Identification>) {
+function harness(cards: Card[], read: (card: Card, call: number, fallback: boolean) => Promise<Identification>) {
   let shelf = cards;
   const sleeps: number[] = [];
   const calls: string[] = [];
+  const models: boolean[] = [];
+  const backoffs: (number | null)[] = [];
   const deps: ReadQueueDeps = {
     next: () => shelf.find(isReading) ?? null,
-    read: (card) => {
+    waiting: () => shelf.filter(isReading).length,
+    read: (card, fallback) => {
       calls.push(card.id);
-      return read(card, calls.length);
+      models.push(fallback);
+      return read(card, calls.length, fallback);
     },
     saveRead: async (card, result) => {
       shelf = shelf.map((item) => (item.id === card.id ? applyRead(item, result) : item));
@@ -25,16 +29,15 @@ function harness(cards: Card[], read: (card: Card, call: number) => Promise<Iden
     saveFailed: async (card) => {
       shelf = shelf.map((item) => (item.id === card.id ? markFailed(item) : item));
     },
-    isQuota: (error) => error instanceof Error && /free limit/.test(error.message),
+    classify: readErrorKind,
+    onBackoff: (ms) => backoffs.push(ms),
     sleep: async (ms) => {
       sleeps.push(ms);
     },
     shouldStop: () => false,
-    gapMs: 4000,
-    retryMs: 8000,
-    quotaRetryMs: 30000,
+    pacing: { gapMs: 8000, bigGapMs: 10000, bigBatch: 3, calmGapMs: 15000, retryMs: 8000, backoffMs: [30000, 60000, 120000, 300000] },
   };
-  return { deps, sleeps, calls, shelf: () => shelf };
+  return { deps, sleeps, calls, models, backoffs, shelf: () => shelf };
 }
 
 describe("applyRead", () => {
@@ -99,11 +102,24 @@ describe("queueAll", () => {
   });
 });
 
+const BUSY = "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.";
+
+describe("readErrorKind", () => {
+  it("sorts free-limit, busy, and photo errors", () => {
+    expect(readErrorKind(new Error(RELAY_QUOTA_MESSAGE))).toBe("quota");
+    expect(readErrorKind(new Error("Gemini's free limit is used up for the moment."))).toBe("quota");
+    expect(readErrorKind(new Error(BUSY))).toBe("busy");
+    expect(readErrorKind(new Error("The card scanner took too long to answer."))).toBe("busy");
+    expect(readErrorKind(new TypeError("Failed to fetch"))).toBe("busy");
+    expect(readErrorKind(new Error("Gemini did not return card details."))).toBe("other");
+  });
+});
+
 describe("runReadQueue", () => {
-  it("reads one at a time with a gap and empties Needs details", async () => {
+  it("reads one at a time, spacing calls 8s apart and 10s for a big batch", async () => {
     let active = 0;
     let peak = 0;
-    const h = harness([pending("a"), pending("b"), pending("c")], async () => {
+    const h = harness(["a", "b", "c", "d", "e"].map(pending), async () => {
       active += 1;
       peak = Math.max(peak, active);
       await Promise.resolve();
@@ -112,40 +128,63 @@ describe("runReadQueue", () => {
     });
     expect(await runReadQueue(h.deps)).toEqual({ kind: "done" });
     expect(peak).toBe(1);
-    expect(h.calls).toEqual(["a", "b", "c"]);
-    expect(h.sleeps).toEqual([4000, 4000]);
+    expect(h.calls).toEqual(["a", "b", "c", "d", "e"]);
+    // 4 waiting (> bigBatch 3) uses the big gap, then the normal gap.
+    expect(h.sleeps).toEqual([10000, 8000, 8000, 8000]);
     expect(h.shelf().every((c) => !needsDetails(c) && needsPrices(c))).toBe(true);
   });
 
-  it("retries once with back-off, then marks Couldn't read and keeps going", async () => {
-    const h = harness([pending("a"), pending("b")], async (card, call) => {
-      if (card.id === "a") throw new Error("Gemini could not read this photo.");
-      if (call === 3) throw new Error("flaky");
+  it("rides out a busy scanner with back-off, alternating to the backup model, and keeps going", async () => {
+    const h = harness([pending("a"), pending("b")], async (_card, call) => {
+      if (call <= 2) throw new Error(BUSY);
+      if (call === 3) throw new Error(RELAY_QUOTA_MESSAGE);
       return READ;
     });
     expect(await runReadQueue(h.deps)).toEqual({ kind: "done" });
-    expect(h.calls).toEqual(["a", "a", "b", "b"]);
-    expect(h.sleeps).toEqual([8000, 4000, 8000]);
-    expect(readFailed(h.shelf()[0])).toBe(true);
-    expect(h.shelf()[1].player).toBe("Bo Nix");
+    expect(h.calls).toEqual(["a", "a", "a", "a", "b"]);
+    expect(h.models).toEqual([false, true, false, true, false]);
+    // 30s, 1m, 2m back-off, then a calmer 15s gap for the rest of the run.
+    expect(h.sleeps).toEqual([30000, 60000, 120000, 15000]);
+    expect(h.backoffs).toEqual([30000, 60000, 120000, null]);
+    expect(h.shelf().every((c) => c.player === "Bo Nix")).toBe(true);
   });
 
-  it("pauses on the free limit and leaves the card waiting to resume later", async () => {
+  it("pauses as the daily cap only after every back-off still hits the limit, leaving cards waiting", async () => {
     const h = harness([pending("a"), pending("b")], async () => {
-      throw new Error("The shared card scanner hit today's free limit.");
+      throw new Error(RELAY_QUOTA_MESSAGE);
     });
     const end = await runReadQueue(h.deps);
-    expect(end.kind).toBe("paused");
-    expect(h.calls).toEqual(["a", "a"]);
-    expect(h.sleeps).toEqual([30000]);
+    expect(end).toMatchObject({ kind: "paused", reason: "daily" });
+    expect(h.calls).toEqual(["a", "a", "a", "a", "a"]);
+    expect(h.sleeps).toEqual([30000, 60000, 120000, 300000]);
     expect(h.shelf().filter(isReading).length).toBe(2);
+  });
+
+  it("pauses as busy (not daily) when Google stays overloaded", async () => {
+    const h = harness([pending("a")], async () => {
+      throw new Error(BUSY);
+    });
+    expect(await runReadQueue(h.deps)).toMatchObject({ kind: "paused", reason: "busy" });
+    expect(isReading(h.shelf()[0])).toBe(true);
+  });
+
+  it("retries a photo error once, then marks Couldn't read and moves on", async () => {
+    const h = harness([pending("a"), pending("b")], async (card) => {
+      if (card.id === "a") throw new Error("Gemini did not return card details.");
+      return READ;
+    });
+    expect(await runReadQueue(h.deps)).toEqual({ kind: "done" });
+    expect(h.calls).toEqual(["a", "a", "b"]);
+    expect(h.sleeps).toEqual([8000, 8000]);
+    expect(readFailed(h.shelf()[0])).toBe(true);
+    expect(h.shelf()[1].player).toBe("Bo Nix");
   });
 
   it("times out a stuck read, retries, then moves on", async () => {
     const h = harness([pending("a"), pending("b")], (card, call) =>
       card.id === "a" && call === 1 ? new Promise<Identification>(() => undefined) : Promise.resolve(READ),
     );
-    h.deps.timeoutMs = 20;
+    h.deps.pacing = { ...h.deps.pacing, timeoutMs: 20 };
     expect(await runReadQueue(h.deps)).toEqual({ kind: "done" });
     expect(h.calls).toEqual(["a", "a", "b"]);
     expect(h.shelf().every((c) => c.player === "Bo Nix")).toBe(true);
@@ -160,7 +199,7 @@ describe("runReadQueue", () => {
     const stuck = harness([pending("a")], async () => READ);
     stuck.deps.saveRead = async () => undefined;
     const end = await runReadQueue(stuck.deps);
-    expect(end.kind).toBe("paused");
+    expect(end).toMatchObject({ kind: "paused", reason: "save" });
     expect(stuck.calls).toEqual(["a"]);
   });
 });

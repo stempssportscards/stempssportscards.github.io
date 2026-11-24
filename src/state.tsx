@@ -13,7 +13,7 @@ import {
   writeJson,
   writeSettings,
 } from "./lib/drive.ts";
-import { DEFAULT_GEMINI_MODEL, RELAY_QUOTA_MESSAGE, identifyCard } from "./lib/gemini.ts";
+import { DEFAULT_GEMINI_MODEL, FALLBACK_GEMINI_MODEL, identifyCard, readErrorKind } from "./lib/gemini.ts";
 import { runReadQueue } from "./lib/readQueue.ts";
 import { applyRead, draftCard, isListable, isReading, markFailed, nextDraftFlag, queueAll, runPool } from "./lib/drafts.ts";
 import { blobToDataUrl, fileToJpeg } from "./lib/images.ts";
@@ -39,6 +39,10 @@ export interface BulkResult {
 
 export interface ReadStatus {
   running: boolean;
+  /** The card being read right now. */
+  activeId: string | null;
+  /** When the scanner is busy, the time the next retry happens. */
+  retryAt: number | null;
   /** Cards finished in this run. */
   done: number;
   /** Cards still waiting, including the one being read. */
@@ -130,6 +134,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [readRunning, setReadRunning] = useState(false);
   const [readDone, setReadDone] = useState(0);
   const [readPaused, setReadPaused] = useState<string | null>(null);
+  const [readPauseMs, setReadPauseMs] = useState(10 * 60 * 1000);
+  const [readActiveId, setReadActiveId] = useState<string | null>(null);
+  const [readBackoffUntil, setReadBackoffUntil] = useState<number | null>(null);
   const readRunningRef = useRef(false);
   const readerRef = useRef({ apiKey: "", relayUrl: "", model: DEFAULT_GEMINI_MODEL });
   const photos = useRef(new Map<string, string>());
@@ -275,7 +282,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     try {
       const end = await runReadQueue({
         next: () => cardsRef.current.find(isReading) ?? null,
-        read: async (card) => {
+        waiting: () => cardsRef.current.filter(isReading).length,
+        read: async (card, fallback) => {
           const blob = await (async () => {
             if (modeRef.current === "demo") return demoGetPhoto(card.photoId);
             const current = tokenRef.current;
@@ -284,7 +292,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           })();
           if (!blob) throw new Error("The photo for this card is missing.");
           const reader = readerRef.current;
-          const result = await identifyCard(blob, reader);
+          const main = reader.model.trim() || DEFAULT_GEMINI_MODEL;
+          const model = fallback ? (main === FALLBACK_GEMINI_MODEL ? DEFAULT_GEMINI_MODEL : FALLBACK_GEMINI_MODEL) : main;
+          const result = await identifyCard(blob, { ...reader, model });
           if (result.source === "mock") throw new Error("No card scanner is set up.");
           return result;
         },
@@ -294,32 +304,41 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         saveFailed: async (card) => {
           await persistQueued((list) => list.map((item) => (item.id === card.id ? markFailed(item) : item)));
         },
-        isQuota: (error) => error instanceof Error && (error.message === RELAY_QUOTA_MESSAGE || /free limit|quota|rate.?limit|429/i.test(error.message)),
+        classify: readErrorKind,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         shouldStop: () => modeRef.current !== startMode || (tokenRef.current?.accessToken ?? null) !== startToken,
+        onStart: (card) => setReadActiveId(card.id),
+        onBackoff: (ms) => setReadBackoffUntil(ms == null ? null : Date.now() + ms),
         onDone: () => setReadDone((count) => count + 1),
       });
       if (end.kind === "paused") {
-        setReadPaused(
-          end.message === RELAY_QUOTA_MESSAGE || /free limit|quota/i.test(end.message)
-            ? "Card reading paused: the free scanner hit its limit. It picks up again later, or tap Resume."
-            : `Card reading paused: ${end.message}`,
-        );
+        if (end.reason === "daily") {
+          setReadPauseMs(30 * 60 * 1000);
+          setReadPaused("Paused: today's free card scanner limit is used up. It picks back up on its own later (the limit resets about 2 AM Central), or tap Resume.");
+        } else if (end.reason === "busy") {
+          setReadPauseMs(10 * 60 * 1000);
+          setReadPaused("Paused: Google's card scanner is very busy right now. It tries again on its own in about 10 minutes, or tap Resume.");
+        } else {
+          setReadPauseMs(2 * 60 * 1000);
+          setReadPaused(`Paused: ${end.message} It tries again in a couple of minutes, or tap Resume.`);
+        }
       }
     } catch (reason) {
       setReadPaused(`Card reading paused: ${reason instanceof Error ? reason.message : "something went wrong."}`);
     } finally {
       readRunningRef.current = false;
       setReadRunning(false);
+      setReadActiveId(null);
+      setReadBackoffUntil(null);
     }
   }
 
   useEffect(() => {
     if (!readPaused) return;
     // Free-limit pauses clear themselves; the scanner's per-minute limit resets quickly.
-    const timer = setTimeout(() => setReadPaused(null), 10 * 60 * 1000);
+    const timer = setTimeout(() => setReadPaused(null), readPauseMs);
     return () => clearTimeout(timer);
-  }, [readPaused]);
+  }, [readPaused, readPauseMs]);
 
   const hasPendingReads = cards.some(isReading);
   useEffect(() => {
@@ -526,6 +545,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       canAutoRead,
       readStatus: {
         running: readRunning,
+        activeId: readActiveId,
+        retryAt: readBackoffUntil,
         done: readDone,
         waiting: cards.filter(isReading).length,
         paused: readPaused,
@@ -654,6 +675,8 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     readRunning,
     readDone,
     readPaused,
+    readActiveId,
+    readBackoffUntil,
     cards,
     clientId,
     error,

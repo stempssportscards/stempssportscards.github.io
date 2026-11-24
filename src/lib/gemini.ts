@@ -1,4 +1,25 @@
 export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+/** Free-tier model with its own per-minute and per-day quota, tried when the main one is busy. */
+export const FALLBACK_GEMINI_MODEL = "gemini-3.1-flash-lite";
+
+export type ReadErrorKind = "quota" | "busy" | "other";
+
+/**
+ * Sort a card-read failure: "quota" = a free-limit/429 answer, "busy" = Google overloaded,
+ * a 5xx, a timeout, or a dropped connection (all temporary), "other" = something about this photo.
+ */
+export function readErrorKind(error: unknown): ReadErrorKind {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (message === RELAY_QUOTA_MESSAGE || /free limit|quota|rate.?limit|RESOURCE_EXHAUSTED|\b429\b/i.test(message)) return "quota";
+  if (
+    /high demand|overloaded|unavailable|try again later|temporar|took too long|timed? ?out|failed to fetch|network|load failed|internal error|\b50[0234]\b|backend error|deadline/i.test(
+      message,
+    )
+  ) {
+    return "busy";
+  }
+  return "other";
+}
 
 export const RELAY_QUOTA_MESSAGE =
   "The shared card scanner hit today's free limit. Add your own free Gemini key in Settings to keep scanning";

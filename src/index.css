@@ -307,3 +307,4 @@ button.slim { min-height: 40px; padding: 4px 0; }
 .draftHead .secondary.slim { white-space: nowrap; min-height: 36px; padding: 4px 10px; font-size: 0.85rem; }
 .readAllRow .secondary.slim { white-space: nowrap; flex: none; }
 body:has(.readBar) .withtabs { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+.block { display: block; }
