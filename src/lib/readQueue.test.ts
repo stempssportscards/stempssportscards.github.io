@@ -141,6 +141,16 @@ describe("runReadQueue", () => {
     expect(h.shelf().filter(isReading).length).toBe(2);
   });
 
+  it("times out a stuck read, retries, then moves on", async () => {
+    const h = harness([pending("a"), pending("b")], (card, call) =>
+      card.id === "a" && call === 1 ? new Promise<Identification>(() => undefined) : Promise.resolve(READ),
+    );
+    h.deps.timeoutMs = 20;
+    expect(await runReadQueue(h.deps)).toEqual({ kind: "done" });
+    expect(h.calls).toEqual(["a", "a", "b"]);
+    expect(h.shelf().every((c) => c.player === "Bo Nix")).toBe(true);
+  });
+
   it("stops when asked and doesn't loop forever if a save doesn't stick", async () => {
     const stop = harness([pending("a")], async () => READ);
     stop.deps.shouldStop = () => true;

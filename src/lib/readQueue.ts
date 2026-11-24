@@ -17,6 +17,24 @@ export interface ReadQueueDeps {
   gapMs?: number;
   retryMs?: number;
   quotaRetryMs?: number;
+  /** Give up on one read after this long so a stuck request can't freeze the queue. */
+  timeoutMs?: number;
+}
+
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("The card scanner took too long to answer.")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 export type ReadQueueEnd = { kind: "done" } | { kind: "stopped" } | { kind: "paused"; message: string };
@@ -34,6 +52,7 @@ export async function runReadQueue(deps: ReadQueueDeps): Promise<ReadQueueEnd> {
   const gap = deps.gapMs ?? 4000;
   const retry = deps.retryMs ?? 8000;
   const quotaRetry = deps.quotaRetryMs ?? 30000;
+  const timeout = deps.timeoutMs ?? 90000;
   const tried = new Set<string>();
   let first = true;
   for (;;) {
@@ -57,7 +76,7 @@ export async function runReadQueue(deps: ReadQueueDeps): Promise<ReadQueueEnd> {
         if (deps.shouldStop()) return { kind: "stopped" };
       }
       try {
-        result = await deps.read(card);
+        result = await withTimeout(deps.read(card), timeout);
       } catch (error) {
         lastError = error;
       }
