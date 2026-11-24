@@ -29,7 +29,7 @@ async function loadCatalog(fileId: string, apiKey: string): Promise<PublicCatalo
 export function PublicSale({ catalog, demo = false }: { catalog: PublicCatalog; demo?: boolean }) {
   return (
     <main className="page publicPage">
-      <Brand large />
+      <Brand moderate />
       <p className="kicker">For sale</p>
       <h1>{catalog.cards.length === 1 ? "1 card" : `${catalog.cards.length} cards`}</h1>
       {demo ? <p className="warn">Demo link. It only opens in this browser.</p> : null}
@@ -109,7 +109,7 @@ export function PublicSalePage({ fileId }: { fileId: string }) {
   if (error) {
     return (
       <main className="page publicPage">
-        <Brand large />
+        <Brand moderate />
         <h1>For sale</h1>
         <p className="warn" role="alert">{error}</p>
       </main>
@@ -118,7 +118,7 @@ export function PublicSalePage({ fileId }: { fileId: string }) {
   if (!catalog) {
     return (
       <main className="page publicPage">
-        <Brand large />
+        <Brand moderate />
         <p className="muted">Loading cards for sale…</p>
       </main>
     );

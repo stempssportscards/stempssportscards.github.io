@@ -50,11 +50,11 @@ export default function App() {
   return (
     <>
       <header>
-        {route.name !== "shelf" ? (
-          <div className="headNav">
+        <div className="headNav">
+          {route.name !== "shelf" ? (
             <button className="ghost back" type="button" aria-label="Back" onClick={back}>←</button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         <Brand onClick={() => go("/")} />
       </header>
       {route.name === "shelf" ? <Shelf /> : null}

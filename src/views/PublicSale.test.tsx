@@ -32,7 +32,8 @@ describe("PublicSale", () => {
     });
     render(<PublicSale catalog={catalog} />);
     const logo = screen.getByRole("img", { name: "Stemp's Sports Cards" });
-    expect(logo.className).toContain("heroLogo");
+    expect(logo.className).toContain("brand");
+    expect(logo.className).toContain("moderate");
     expect(logo.getAttribute("src")).toContain("wordmark.png");
     expect(screen.getByRole("heading", { name: "Patrick Mahomes" })).toBeTruthy();
     expect(screen.getByTestId("asking").textContent).toBe("$25.00");
